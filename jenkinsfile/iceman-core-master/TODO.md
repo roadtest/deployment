@@ -1,0 +1,31 @@
+# Microservice To-Do [List](https://wiki.autodesk.com/pages/viewpage.action?spaceKey=PLM&title=PLM+microservices+tool+chain)
+
+- [x] Ci/CD pipeline
+    - [x] JenkinsFile
+    - [x] Docker
+    - [x] Auto Deployment
+- [x] Spring-boot framework
+- [x] Jersey framework
+    - [x] Logging Feature
+    - [x] WADL
+- [x] Spring Actuator
+    - [x] Service version shows in /system/info
+- [ ] Test framework
+   - [x] AssertJ
+   - [x] Junit4
+   - [x] Unit Test
+   - [x] Integration Test
+   - [x] JaCoCo code converage
+   - [ ] BDD Test
+- [x] Logging
+    - [x] Logback
+    - [x] Request ID (Correlation ID)
+- [ ] Database
+    - [ ] Cassandra
+    - [ ] Change log
+- [x] Security
+    - [x] OAuth2 bearer token
+    - [ ] ACM permissions/polices
+- [ ] Wiki
+- [ ] Apigee
+- [ ] UI

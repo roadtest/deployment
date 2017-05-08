@@ -1,0 +1,90 @@
+#!groovy
+
+
+node('CTR') {
+    timestamps {
+ 		env.SLACK_CHANNEL = "#1f-iceman"
+		env.SERVICE = "ICEMAN"
+        def branch = this.env.BRANCH_NAME
+        def url = env.BUILD_URL 
+        def imageName="autodesk-docker-build-images.art-bobcat.autodesk.com:10873/gradle"
+        def msg = "${env.SERVICE} Build : " + url
+        
+	    docker.image("${imageName}").pull()
+    	docker.image("${imageName}").inside ('-v /mnt/data/.m2:/var/jenkins_home/.gradle'){
+            stage("Build") {
+                checkout scm
+                sh "git clean -fxd"
+                sh "chmod +x ./gradlew"
+                slackMsg (this,{
+                    message = msg
+                })
+                sh "./gradlew clean build -x test" 
+            }
+            
+            stage("Test") {
+	            parallel(
+	                "unit test" : { 
+	                   doTest (this,{
+								task = "test"
+								report = "unit-tests"
+								name = "Unit Tests"
+				
+	                        })
+	                },
+	                "integration test" : {
+	                    doTest (this,{
+	    	                    task = "integrationTest"
+	    	                    report = "integration-tests"
+	    	                    name = "Integration Tests"
+	    	       
+	                        })
+	                }  
+	            )
+	            
+                // code coverage report
+                doTest (this,{
+                	task = "jacocoTestReport"
+                	report = "jacoco/test/html"
+                	name = "Code Coverage"
+                })
+                
+	            slackMsg (this,{
+	            	message = msg
+	            })
+			   	
+			   	//validate status of the build and set it properly for next step
+			   	if ( currentBuild.result == "FAILURE" ) {
+			        manager.buildFailure()
+			    }            
+		    } 
+        }
+        
+        if (branch == "master" && currentBuild.result != "FAILURE" ) {
+            try {
+                stage("Build Docker Image") {
+                    sh "./gradlew buildImage"
+                }
+                stage("Push Image to hub") {
+                    docker.withRegistry('https://autodesk-docker-build-images.art-bobcat.autodesk.com:10873/', 'art-bobcat_service_account_id') {
+                        image = docker.image("iceman:latest")
+                        image.push()
+                    }
+                    docker.withRegistry('https://quay.io', 'quay-io-jenkins-ci') {
+                        sh "docker tag iceman:latest quay.io/autodeskcloud/ctr-iceman:latest"
+                        sh "docker push quay.io/autodeskcloud/ctr-iceman:latest"
+                    }
+                }
+                stage("Deploy to CloudOS Dev") {
+                    build job: '../svc-iceman/master', parameters: [[$class: 'StringParameterValue', name: 'automation', value: 'upgrade'], [$class: 'StringParameterValue', name: 'environment', value: 'dev']]
+                }
+            } finally {
+                stage("Cleanup image") {
+                    sh "docker rmi --force quay.io/autodeskcloud/ctr-iceman:latest >/dev/null 2>&1 || true"
+                    sh "docker rmi --force iceman:latest >/dev/null 2>&1 || true"
+                }
+            }
+        }
+
+    }
+}

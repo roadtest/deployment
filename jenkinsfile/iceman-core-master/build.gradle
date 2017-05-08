@@ -1,0 +1,179 @@
+buildscript {
+    ext {
+        gradleGitPropertiesVersion = '1.4.17'
+        springBootVersion = '1.5.2.RELEASE'
+        springCloudVersion = '1.2.6.RELEASE'
+        swaggerVersion = '1.5.12'
+        dockerPlugin = '1.2'
+
+        adskMicroservicesConfigurationVersion = '0.0.+'
+        adskMicroservicesContextVersion = '0.0.+'
+        adskMicroservicesErrorVersion = '0.0.+'
+        adskMicroservicesFilterVersion = '0.0.+'
+        adskMicroservicesAcmVersion = '0.0.3-SNAPSHOT'
+        adskMicroservicesOAuthVersion = '0.0.9-SNAPSHOT'
+        adskIcemanEndPointVersion = '0.0.+'
+
+        jacocoVersion = '0.7.9'
+        restAssuredVersion = '3.0.2'
+        junitDataProviderVersion = '1.11.0'
+        junitVersion = '4.12'
+        mockitoVersion = '1.10.19'
+        assertjVersion = '3.5.2'
+        wireMockVersion = '2.5.1'
+    }
+
+    repositories {
+        mavenCentral()
+        maven { url 'https://repo.spring.io/snapshot' }
+        maven { url 'https://repo.spring.io/milestone' }
+        maven { url 'https://plugins.gradle.org/m2/' }
+    }
+
+    dependencies {
+        classpath "gradle.plugin.com.gorylenko.gradle-git-properties:gradle-git-properties:$gradleGitPropertiesVersion"
+        classpath "org.springframework.boot:spring-boot-gradle-plugin:$springBootVersion"
+        classpath "se.transmode.gradle:gradle-docker:$dockerPlugin"
+    }
+}
+
+apply plugin: 'com.gorylenko.gradle-git-properties'
+apply plugin: 'java'
+apply plugin: 'org.springframework.boot'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+apply plugin: 'docker'
+apply plugin: 'jacoco'
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+group = 'com.autodesk.iceman'
+version = '0.0.1-SNAPSHOT'
+
+jar {
+    baseName = project.name
+    version = project.version
+}
+
+jacoco {
+    toolVersion = project.jacocoVersion
+}
+
+processResources {
+    filesMatching('**/application.properties') {
+        expand(project.properties)
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'https://repo.spring.io/snapshot' }
+    maven { url 'https://repo.spring.io/milestone' }
+    maven { url 'http://arti.ecs.ads.autodesk.com/artifactory/libs-snapshot-local' }
+}
+
+dependencies {
+    compile "org.springframework.boot:spring-boot-starter-actuator:$springBootVersion"
+    compile "org.springframework.boot:spring-boot-starter-web:$springBootVersion"
+    compile "org.springframework.boot:spring-boot-starter-jersey:$springBootVersion"
+    compile "org.springframework.cloud:spring-cloud-starter-hystrix:$springCloudVersion"
+    compile "org.springframework.cloud:spring-cloud-starter-hystrix-dashboard:$springCloudVersion"
+    compile "io.swagger:swagger-jersey2-jaxrs:$swaggerVersion"
+
+    compile "com.autodesk.microservices:microservices-configuration:$adskMicroservicesConfigurationVersion"
+    compile "com.autodesk.microservices:microservices-context:$adskMicroservicesContextVersion"
+    compile "com.autodesk.microservices:microservices-error:$adskMicroservicesErrorVersion"
+    compile "com.autodesk.microservices:microservices-filter:$adskMicroservicesFilterVersion"
+    compile "com.autodesk.microservices:microservices-acm:$adskMicroservicesAcmVersion"
+    compile "com.autodesk.iceman:iceman-endpoint:$adskIcemanEndPointVersion"
+
+    testCompile "org.springframework.boot:spring-boot-starter-test:$springBootVersion"
+    testCompile "io.rest-assured:rest-assured:$restAssuredVersion"
+    testCompile "junit:junit:$junitVersion"
+    testCompile "com.tngtech.java:junit-dataprovider:$junitDataProviderVersion"
+    testCompile "org.mockito:mockito-core:$mockitoVersion"
+    testCompile "org.assertj:assertj-core:$assertjVersion"
+    testCompile "com.github.tomakehurst:wiremock:$wireMockVersion"
+    testCompile "com.autodesk.microservices:microservices-acm:$adskMicroservicesAcmVersion:mocks"
+    testCompile "com.autodesk.microservices:microservices-oauth:$adskMicroservicesOAuthVersion:mocks"
+}
+
+idea {
+    module {
+        testSourceDirs += file('src/integration-test/java')
+    }
+}
+
+test {
+    systemProperties = System.properties
+    reports {
+        junitXml.destination = file("$reporting.baseDir/xml-test-results/unit-tests")
+        html.enabled = true
+        html.destination = file("$buildDir/reports/unit-tests")
+    }
+}
+
+bootRun {
+    systemProperties = System.properties
+}
+
+sourceSets {
+    integrationTest {
+        java {
+            compileClasspath += main.output + test.output
+            runtimeClasspath += main.output + test.output
+            srcDir file('src/integration-test/java')
+        }
+        resources.srcDir file('src/integration-test/resources')
+    }
+}
+
+configurations {
+    integrationTestCompile.extendsFrom testCompile
+    integrationTestRuntime.extendsFrom testRuntime
+}
+
+task integrationTest(type: Test) {
+    systemProperties = System.properties
+    group = 'verification'
+    description = 'Run the integration tests.'
+    testClassesDir = sourceSets.integrationTest.output.classesDir
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    reports {
+        junitXml.destination = file("$reporting.baseDir/xml-test-results/integration-tests")
+        html.enabled = true
+        html.destination = file("$buildDir/reports/integration-tests")
+    }
+    outputs.upToDateWhen {
+        false
+    }
+}
+
+task buildImage(type: Docker) {
+    group = 'docker'
+    tag = 'iceman'
+    tagVersion = 'latest'
+    dockerfile = 'Dockerfile'
+    doFirst {
+        copy {
+            from jar
+            into file("$stageDir/build/libs")
+        }
+        copy {
+            from file("$project.rootDir/resources")
+            into file("$stageDir/resources")
+        }
+        def tag = file(new File("$stageDir/build/BUILD"))
+        tag.text = project.version
+    }
+}
+
+gitProperties {
+    dateFormat = "yyyy-MM-dd'T'HH:mmZ"
+    dateFormatTimeZone = "PST"
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '3.4.1'
+}

@@ -1,0 +1,102 @@
+from fabric.api import env,run,task,roles,parallel,settings,hide,cd
+from fabric.state import output
+from fabric import colors
+from fabric.tasks import execute
+from fabric.operations import local
+from fabric.utils import puts
+from fabric_fixes.monkeyPatch import *
+import os,sys
+############
+#customize environment section
+############
+DownloadLink = "http://arti.ecs.ads.autodesk.com/artifactory/ext-release-local/com/autodesk/cpdm/1.0.4/cpdm-1.0.4.jar"
+tmpDir = "/tmp"
+warFile = "cpdm-1.0.4.jar"
+HomeDir = "/opt/cpdm/"
+LinkedWar = "cpdm-current.jar"
+############
+
+'''
+Usage:
+   fab -l	<=list all tasks
+   fab TargetEnv:fd-app-stg DeployStaging
+   I didn't use annotation using role format for host list
+   @roles('rolename')
+'''
+env.reject_unkown_hosts = False
+env.disable_known_hosts = True
+output['aborts'] = False
+####
+env.roledefs = {
+	'fd-app-stg': { 'hosts': ['ec2-user@fppapp1', 'ec2-user@fppapp2'],
+				     'SSHKEY': '/home/cma/unix_home/plm360use1-FusionDM-prod.pem',
+					 'Envs': 'stage'
+	 },
+	'fd-app-alpha': { 'hosts': ['ec2-user@fppapp1', 'ec2-user@fppapp2'],
+				     'SSHKEY': '/home/cma/unix_home/plm360use1-FusionDM-prod.pem',
+					 'Envs': 'alpha'
+	 },
+	'fd-db-stg': { 'hosts': ['ec2-user@fppdb1', 'ec2-user@fppdb2','ec2-user@fppdb3'],
+				     'SSHKEY': '/home/cma/unix_home/plm360use1-FusionDM-prod.pem',
+					 'Envs': 'stage'
+	 },
+	'fd-app-prd': { 'hosts': ['ec2-user@fapp1', 'ec2-user@fapp2'],
+				     'SSHKEY': '/home/cma/unix_home/plm360use1-FusionDM-prod.pem',
+					 'Envs': 'prod'
+	 },
+	'fd-app-prd': { 'hosts': ['ec2-user@fapp1', 'ec2-user@fapp2'],
+				     'SSHKEY': '/home/cma/unix_home/plm360use1-FusionDM-prod.pem',
+					 'Envs': 'preview'
+	 },
+	'fd-db-prd': { 'hosts': ['ec2-user@fdb1', 'ec2-user@fdb2','ec2-user@fdb3'],
+				     'SSHKEY': '/home/cma/unix_home/plm360use1-FusionDM-prod.pem',
+					 'Envs': 'prod'
+	 },
+	'localone': { 'hosts': ['cma@localhost:2222'],
+				  'SSHKEY': '/home/cma/.ssh/id_rsa',
+                  'Envs': 'local'
+	 }
+}
+
+@parallel
+def ConnectivityCheck():
+    try:
+        run('pwd')
+        return True
+    except Exception:
+        puts("\n@@@@@@@@@@@@@@@@@@@@@\nHosts are not reachable, ensure virtel VPN is started\
+        \n@@@@@@@@@@@@@@@@@@@@@")
+        return False
+
+def PushWarFile():
+    put(os.path.join(tmpDir,warFile), "/tmp")
+    sudo('/bin/chmod 755 ' + "/tmp/" + warFile)
+
+def CopyFile():
+    CurrentPath = HomeDir + Envs
+    with settings(warn_only=True):
+        sudo("/usr/bin/pkill -f cpdm")
+    sudo("rm -f " + CurrentPath + "/" + LinkedWar ,user='autodesk')
+    sudo("cp /tmp/" + warFile + " " + CurrentPath ,user = 'autodesk')
+    sudo("ln -s " + CurrentPath + "/" + warFile + " " + CurrentPath + "/" + LinkedWar, user = 'autodesk')
+    sudo(CurrentPath + "/run.sh", user = 'autodesk',pty = False)
+
+@task
+def TargetEnv(RoleName):
+	env.user = "ec2-user"
+	env.key_filename = env.roledefs[RoleName]['SSHKEY']
+	env.hosts = env.roledefs[RoleName]['hosts']
+	global Envs
+	Envs = env.roledefs[RoleName]['Envs']
+
+@task
+def DeployWar():
+    if ConnectivityCheck():
+        local("echo 'inside true'")
+        PushWarFile()
+        CopyFile()
+    else:
+#above function catch SystemExit exception,return false,
+#then force system exit without stacktrace
+        sys.exit()
+        local("echo neverReachThisLine")

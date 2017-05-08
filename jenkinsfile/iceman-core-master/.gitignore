@@ -1,0 +1,12 @@
+!.gitignore
+!gradle/wrapper/gradle-wrapper.jar
+.gradle
+.classpath
+.project
+.settings/
+.idea/
+build/
+bin/
+target/
+test-output/
+logs/
